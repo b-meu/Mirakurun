@@ -371,6 +371,20 @@ export const TunersConfigView: React.FC = () => {
                                                 />
                                             </FormGroup>
                                         )}
+                                        <FormGroup label="MMTS Decoder">
+                                            <InputGroup
+                                                placeholder="dantto4k - -"
+                                                value={tuner.mmtsDecoder || ""}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    if (val === "") {
+                                                        deleteTunerProperty(i, "mmtsDecoder");
+                                                    } else {
+                                                        updateTuner(i, { mmtsDecoder: val });
+                                                    }
+                                                }}
+                                            />
+                                        </FormGroup>
                                     </div>
                                 </td>
                                 <td>

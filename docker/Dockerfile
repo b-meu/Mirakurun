@@ -225,8 +225,6 @@ RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
 #
 FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
 
-ENV LANG=C LC_ALL=C
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates git \
         make g++ \
@@ -234,7 +232,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl-dev zlib1g-dev libcurl4-openssl-dev \
         libpcsclite-dev \
         pkgconf \
+        locales \
+    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen \
     && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git /src \
     && cd /src && git submodule update --init --recursive --depth 1

@@ -926,7 +926,7 @@ About BS Subchannel Style:
             in: "query",
             name: "type",
             type: "string",
-            enum: ["GR", "BS", "CS"] as apid.ChannelType[],
+            enum: ["GR", "BS", "CS", "BS4K"] as apid.ChannelType[],
             default: "GR",
             description: "Specifies the channel type to scan."
         },

@@ -162,6 +162,30 @@ export class Program {
         return items;
     }
 
+    findByNetworkIdServiceId(networkId: number, serviceId: number): db.Program[] {
+        const items = [];
+
+        for (const item of this._itemMap.values()) {
+            if (item.networkId === networkId && item.serviceId === serviceId) {
+                items.push(item);
+            }
+        }
+
+        return items;
+    }
+
+    findByNetworkIdAndServiceIdAndTime(networkId: number, serviceId: number, time: number): db.Program[] {
+        const items = [];
+
+        for (const item of this._itemMap.values()) {
+            if (item.networkId === networkId && item.serviceId === serviceId && item.startAt <= time && item.startAt + item.duration > time) {
+                items.push(item);
+            }
+        }
+
+        return items;
+    }
+
     findByNetworkIdAndReplace(networkId: number, programs: db.Program[]): void {
         let count = 0;
 

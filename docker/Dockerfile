@@ -225,6 +225,8 @@ RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
 #
 FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
 
+ENV LANG=C LC_ALL=C
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates git \
         make g++ \

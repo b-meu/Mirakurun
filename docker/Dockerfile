@@ -227,9 +227,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # tsduck-dev の最新 .deb を GitHub Releases からダウンロードしてインストール
 RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
-      | grep -o '"browser_download_url":"[^"]*"' \
-      | grep 'tsduck-dev[^"]*debian12_amd64\.deb' \
-      | cut -d'"' -f4 \
+      | grep -o 'https://[^"]*tsduck-dev[^"]*debian12_amd64\.deb' \
       | xargs curl -fsSL -o /tmp/tsduck-dev.deb \
     && dpkg -i /tmp/tsduck-dev.deb \
     && rm /tmp/tsduck-dev.deb
@@ -287,9 +285,7 @@ COPY --from=aribb25-build /out/usr /usr
 
 # tsduck ランタイム .deb（dantto4k が依存する共有ライブラリ）
 RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
-      | grep -o '"browser_download_url":"[^"]*"' \
-      | grep '"tsduck_[^"]*debian12_amd64\.deb"' \
-      | cut -d'"' -f4 \
+      | grep -o 'https://[^"]*tsduck_[^"]*debian12_amd64\.deb' \
       | xargs curl -fsSL -o /tmp/tsduck.deb \
     && dpkg -i /tmp/tsduck.deb \
     && rm /tmp/tsduck.deb \

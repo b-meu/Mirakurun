@@ -41,7 +41,7 @@ import { ConfigChannels, ConfigChannelsItem, ChannelType, ChannelScanStatus } fr
 import "./ChannelsConfigView.sass";
 
 const configAPI = "/api/config/channels";
-const typesIndex = ["GR", "BS", "CS", "SKY"];
+const typesIndex = ["GR", "BS", "CS", "SKY", "BS4K"];
 
 function sortTypes(types: ChannelType[]): ChannelType[] {
     return types.sort((a, b) => typesIndex.indexOf(a) - typesIndex.indexOf(b));

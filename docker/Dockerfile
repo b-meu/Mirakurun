@@ -210,7 +210,36 @@ RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
     && DESTDIR=/out make -C build install
 
 
-# ── Stage 3: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────
+# ── Stage 3: dantto4k のビルド（tsduck は公式 .deb を使用）─────────────────────
+#
+# tsduck のソースビルドは20〜30分かかるため、GitHub Releases の公式 .deb を使用する。
+# tsduck-dev: ヘッダ・静的ライブラリ（dantto4k のビルドに必要）
+# tsduck:     共有ライブラリ（ランタイムに必要）
+#
+FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git \
+        make g++ \
+        libssl-dev zlib1g-dev libcurl4-openssl-dev \
+        libpcsclite-dev pkgconf \
+    && rm -rf /var/lib/apt/lists/*
+
+# tsduck-dev の最新 .deb を GitHub Releases からダウンロードしてインストール
+RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
+      | grep -o '"browser_download_url":"[^"]*"' \
+      | grep 'tsduck-dev[^"]*debian12_amd64\.deb' \
+      | cut -d'"' -f4 \
+      | xargs curl -fsSL -o /tmp/tsduck-dev.deb \
+    && dpkg -i /tmp/tsduck-dev.deb \
+    && rm /tmp/tsduck-dev.deb
+
+RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git /src \
+    && cd /src && git submodule update --init --recursive --depth 1 \
+    && make -j"$(nproc)" && make install
+
+
+# ── Stage 4: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────
 #
 # b-meu/Mirakurun: upstream chinachu/Mirakurun に BS4K 差分を適用した fork。
 # 主な追加機能:
@@ -232,14 +261,14 @@ RUN git clone --depth 1 https://github.com/b-meu/Mirakurun.git .
 RUN npm ci --include=dev && npm run build && npm ci --omit=dev
 
 
-# ── Stage 4: ランタイム ───────────────────────────────────────────────────────
+# ── Stage 5: ランタイム ───────────────────────────────────────────────────────
 FROM ${ARCH}node:24.16.0-bookworm-slim
 
 WORKDIR /app
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-        ca-certificates \
+        ca-certificates curl \
         pcscd \
         libpcsclite-dev \
         libccid \
@@ -248,13 +277,7 @@ RUN apt-get update && \
         libssl3 \
         libcurl4 \
         zlib1g \
-        git make g++ python3 pkg-config \
-        locales \
-    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
-    && locale-gen \
     && rm -rf /var/lib/apt/lists/*
-
-ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 # v4l-utils 1.32.0 (JP パッチ適用済み): libdvbv5 と dvb-tools
 COPY --from=v4l-build /out/usr /usr
@@ -262,27 +285,20 @@ COPY --from=v4l-build /out/usr /usr
 # libaribb25: arib-b1-stream-test / arib-b25-stream-test
 COPY --from=aribb25-build /out/usr /usr
 
-# dantto4k + tsduck をランタイムステージで直接ビルド（ライブラリパス問題を回避）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libssl-dev zlib1g-dev libcurl4-openssl-dev \
-    && git clone --depth 1 https://github.com/nekohkr/dantto4k.git /tmp/dantto4k \
-    && cd /tmp/dantto4k && git submodule update --init --recursive --depth 1 \
-    && cd thirdparty/tsduck \
-    && make -j"$(nproc)" \
-        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
-        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
-        CXXFLAGS_EXTRA=-Wno-error \
-    && make install \
-        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
-        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
-        CXXFLAGS_EXTRA=-Wno-error \
-    && ldconfig \
-    && cd /tmp/dantto4k && make -j"$(nproc)" && make install \
-    && rm -rf /tmp/dantto4k \
-    && apt-get remove -y libssl-dev zlib1g-dev libcurl4-openssl-dev \
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# tsduck ランタイム .deb（dantto4k が依存する共有ライブラリ）
+RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
+      | grep -o '"browser_download_url":"[^"]*"' \
+      | grep '"tsduck_[^"]*debian12_amd64\.deb"' \
+      | cut -d'"' -f4 \
+      | xargs curl -fsSL -o /tmp/tsduck.deb \
+    && dpkg -i /tmp/tsduck.deb \
+    && rm /tmp/tsduck.deb \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# dantto4k バイナリ（tsduck-dev でビルド済み）
+COPY --from=dantto4k-build /usr/local/bin/dantto4k /usr/local/bin/dantto4k
+
+RUN ldconfig
 
 COPY --from=build /app /app
 CMD ["./docker/container-init.sh"]

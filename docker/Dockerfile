@@ -210,37 +210,45 @@ RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
     && DESTDIR=/out make -C build install
 
 
-# ── Stage 3: dantto4k のビルド（tsduck は公式 .deb を使用）─────────────────────
+# ── Stage 3: tsduck のビルド（dantto4k サブモジュール固定コミット）──────────────
 #
-# tsduck のソースビルドは20〜30分かかるため、GitHub Releases の公式 .deb を使用する。
-# tsduck-dev: ヘッダ・静的ライブラリ（dantto4k のビルドに必要）
-# tsduck:     共有ライブラリ（ランタイムに必要）
+# tsduck は debian12 の公式 .deb を提供していないためソースビルドする。
+# dantto4k とステージを分離することで、Mirakurun の変更時に再ビルドされない。
+# tsduck ビルドは --no-cache なしなら Docker キャッシュが効く。
 #
-FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
+FROM ${ARCH}debian:bookworm-slim AS tsduck-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl git \
+        ca-certificates git \
         make g++ python3 \
         libssl-dev zlib1g-dev libcurl4-openssl-dev \
         libpcsclite-dev pkgconf \
+        locales \
+    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen \
     && rm -rf /var/lib/apt/lists/*
 
-# tsduck-dev の最新 .deb を GitHub Releases からダウンロードしてインストール
-RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
-      | python3 -c "
-import sys, json
-assets = json.load(sys.stdin)['assets']
-url = next(a['browser_download_url'] for a in assets
-           if 'tsduck-dev' in a['name'] and 'debian12_amd64' in a['name'])
-print(url)
-" \
-      | xargs curl -fsSL -o /tmp/tsduck-dev.deb \
-    && dpkg -i /tmp/tsduck-dev.deb \
-    && rm /tmp/tsduck-dev.deb
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git /src \
-    && cd /src && git submodule update --init --recursive --depth 1 \
-    && make -j"$(nproc)" && make install
+    && cd /src && git submodule update --init --recursive --depth 1
+
+RUN cd /src/thirdparty/tsduck \
+    && make -j"$(nproc)" \
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && make install \
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && ldconfig
+
+
+# ── Stage 4: dantto4k のビルド ───────────────────────────────────────────────
+FROM tsduck-build AS dantto4k-build
+
+RUN cd /src && make -j"$(nproc)" && make install
 
 
 # ── Stage 4: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────
@@ -265,14 +273,14 @@ RUN git clone --depth 1 https://github.com/b-meu/Mirakurun.git .
 RUN npm ci --include=dev && npm run build && npm ci --omit=dev
 
 
-# ── Stage 5: ランタイム ───────────────────────────────────────────────────────
+# ── Stage 6: ランタイム ───────────────────────────────────────────────────────
 FROM ${ARCH}node:24.16.0-bookworm-slim
 
 WORKDIR /app
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-        ca-certificates curl python3 \
+        ca-certificates \
         pcscd \
         libpcsclite-dev \
         libccid \
@@ -281,6 +289,7 @@ RUN apt-get update && \
         libssl3 \
         libcurl4 \
         zlib1g \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # v4l-utils 1.32.0 (JP パッチ適用済み): libdvbv5 と dvb-tools
@@ -289,22 +298,9 @@ COPY --from=v4l-build /out/usr /usr
 # libaribb25: arib-b1-stream-test / arib-b25-stream-test
 COPY --from=aribb25-build /out/usr /usr
 
-# tsduck ランタイム .deb（dantto4k が依存する共有ライブラリ）
-RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
-      | python3 -c "
-import sys, json
-assets = json.load(sys.stdin)['assets']
-url = next(a['browser_download_url'] for a in assets
-           if a['name'].startswith('tsduck_') and 'debian12_amd64' in a['name'])
-print(url)
-" \
-      | xargs curl -fsSL -o /tmp/tsduck.deb \
-    && dpkg -i /tmp/tsduck.deb \
-    && rm /tmp/tsduck.deb \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# dantto4k バイナリ（tsduck-dev でビルド済み）
+# dantto4k バイナリ + tsduck ライブラリ（同一ビルド環境からコピーしてABI整合性を保証）
 COPY --from=dantto4k-build /usr/local/bin/dantto4k /usr/local/bin/dantto4k
+COPY --from=dantto4k-build /usr/local/lib /usr/local/lib
 
 RUN ldconfig
 

@@ -220,14 +220,20 @@ FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl git \
-        make g++ \
+        make g++ python3 \
         libssl-dev zlib1g-dev libcurl4-openssl-dev \
         libpcsclite-dev pkgconf \
     && rm -rf /var/lib/apt/lists/*
 
 # tsduck-dev の最新 .deb を GitHub Releases からダウンロードしてインストール
 RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
-      | grep -o 'https://[^"]*tsduck-dev[^"]*debian12_amd64\.deb' \
+      | python3 -c "
+import sys, json
+assets = json.load(sys.stdin)['assets']
+url = next(a['browser_download_url'] for a in assets
+           if 'tsduck-dev' in a['name'] and 'debian12_amd64' in a['name'])
+print(url)
+" \
       | xargs curl -fsSL -o /tmp/tsduck-dev.deb \
     && dpkg -i /tmp/tsduck-dev.deb \
     && rm /tmp/tsduck-dev.deb
@@ -266,7 +272,7 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-        ca-certificates curl \
+        ca-certificates curl python3 \
         pcscd \
         libpcsclite-dev \
         libccid \
@@ -285,7 +291,13 @@ COPY --from=aribb25-build /out/usr /usr
 
 # tsduck ランタイム .deb（dantto4k が依存する共有ライブラリ）
 RUN curl -fsSL https://api.github.com/repos/tsduck/tsduck/releases/latest \
-      | grep -o 'https://[^"]*tsduck_[^"]*debian12_amd64\.deb' \
+      | python3 -c "
+import sys, json
+assets = json.load(sys.stdin)['assets']
+url = next(a['browser_download_url'] for a in assets
+           if a['name'].startswith('tsduck_') and 'debian12_amd64' in a['name'])
+print(url)
+" \
       | xargs curl -fsSL -o /tmp/tsduck.deb \
     && dpkg -i /tmp/tsduck.deb \
     && rm /tmp/tsduck.deb \

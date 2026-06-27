@@ -227,6 +227,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl-dev libpcsclite-dev \
         pkgconf \
         python3 \
+        libedit-dev \
     && echo '#!/bin/sh' > /usr/local/bin/sudo \
     && echo 'exec "$@"' >> /usr/local/bin/sudo \
     && chmod +x /usr/local/bin/sudo \

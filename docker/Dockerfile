@@ -216,37 +216,40 @@ RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
 # BS4K 放送は MMT/TLV 形式で伝送されるため、MPEG-2 TS に変換する必要がある。
 # 変換はチューナーコマンドの出力を dantto4k にパイプして行う (mmtsDecoder 設定)。
 #
-# 注意: tsduck は大規模なライブラリのため、ビルドに時間がかかる（20〜30 分）。
+# 注意:
+# - tsduck の install-prerequisites.sh は lsb_release/sudo に依存しており、
+#   slim イメージでは何もインストールせず素通りする。スクリプトを使わず直接 apt install する。
+# - NOEDITLINE=1 で editline 依存を除去（libedit-dev 不要）
+# - CXXFLAGS_EXTRA=-Wno-error で GCC12 の -Werror 誤検知を回避
+# - tsduck は大規模なライブラリのため、ビルドに時間がかかる（20〜30 分）。
 #
 FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
 
-# install-prerequisites.sh が sudo を呼ぶため、root として透過実行するラッパーを作成
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates git \
         make g++ \
-        libssl-dev libpcsclite-dev \
+        libssl-dev zlib1g-dev libcurl4-openssl-dev \
+        libpcsclite-dev \
         pkgconf \
-        python3 \
-        libedit-dev \
-    && echo '#!/bin/sh' > /usr/local/bin/sudo \
-    && echo 'exec "$@"' >> /usr/local/bin/sudo \
-    && chmod +x /usr/local/bin/sudo \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /src
-RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git . \
-    && git submodule update --init --recursive --depth 1
+RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git /src \
+    && cd /src && git submodule update --init --recursive --depth 1
 
-# tsduck の依存パッケージをインストールし、ビルド・インストール
-RUN cd thirdparty/tsduck \
-    && apt-get update \
-    && bash scripts/install-prerequisites.sh \
-    && rm -rf /var/lib/apt/lists/* \
+# tsduck をビルド・インストール（不要機能を無効化してビルド時間・依存を削減）
+RUN cd /src/thirdparty/tsduck \
     && make -j"$(nproc)" \
-    && make install
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && make install \
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && ldconfig
 
 # dantto4k のビルド・インストール（/usr/local/bin/dantto4k）
-RUN make -j"$(nproc)" && make install
+RUN cd /src && make -j"$(nproc)" && make install
 
 
 # ── Stage 4: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────

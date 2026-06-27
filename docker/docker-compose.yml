@@ -1,19 +1,10 @@
 services:
   mirakurun:
-    # `latest` can be changed to fix the version
-    # `latest` の部分を編集するとバージョンを固定できます
-    # available tags: https://hub.docker.com/r/chinachu/mirakurun/tags
-    image: chinachu/mirakurun:${MIRAKURUN_IMAGE_TAG:-latest}
+    image: mirakurun:latest
 
     # 環境変数
     environment:
       TZ: Asia/Tokyo
-      # set to "1" to disable pcscd
-      # pcscd を無効にする場合は "1"
-      DISABLE_PCSCD: "${DISABLE_PCSCD:-0}"
-      # set to "1" to disable fetch/build the B25 test decoder command
-      # B25 テストコマンドの取得とビルドを無効にする場合は "1"
-      DISABLE_B25_TEST: "${DISABLE_B25_TEST:-0}"
       # comment out below if you commented out `network_mode: host`
       # `network_mode: host` をコメントアウトする場合はここもコメントアウト
       DOCKER_NETWORK: host

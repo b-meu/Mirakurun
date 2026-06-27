@@ -564,7 +564,8 @@ export const ChannelsConfigView: React.FC = () => {
                                             { value: "GR", label: "GR" },
                                             { value: "BS", label: "BS" },
                                             { value: "CS", label: "CS" },
-                                            { value: "SKY", label: "SKY" }
+                                            { value: "SKY", label: "SKY" },
+                                            { value: "BS4K", label: "BS4K" }
                                         ]}
                                     />
                                 </td>

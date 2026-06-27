@@ -356,7 +356,7 @@ export const TunersConfigView: React.FC = () => {
                                                 </div>
                                             </>
                                         )}
-                                        {(!tuner.remoteMirakurunHost || !tuner.remoteMirakurunDecoder) && (
+                                        {(!tuner.remoteMirakurunHost || !tuner.remoteMirakurunDecoder) && !tuner.types?.includes("BS4K") && (
                                             <FormGroup label="Decoder">
                                                 <InputGroup
                                                     value={tuner.decoder || ""}

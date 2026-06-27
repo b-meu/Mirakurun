@@ -228,6 +228,7 @@ FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates git \
         make g++ \
+        python3 \
         libssl-dev zlib1g-dev libcurl4-openssl-dev \
         libpcsclite-dev \
         pkgconf \

@@ -303,10 +303,8 @@ COPY --from=v4l-build /out/usr /usr
 # libaribb25: arib-b1-stream-test / arib-b25-stream-test
 COPY --from=aribb25-build /out/usr /usr
 
-# dantto4k: BS4K の MMT/TLV → MPEG-2 TS 変換コマンド
-COPY --from=dantto4k-build /usr/local/bin/dantto4k /usr/local/bin/dantto4k
-# tsduck ランタイムライブラリ（dantto4k が依存）
-COPY --from=dantto4k-build /usr/local/lib/libtsduck* /usr/local/lib/
+# dantto4k + tsduck ランタイム（/usr/local/bin/dantto4k, /usr/local/lib/libtsduck*.so）
+COPY --from=dantto4k-build /usr/local /usr/local
 
 # /usr/lib と /usr/local/lib が ldconfig の検索パスに含まれない場合に備えて明示的に追加
 RUN echo "/usr/lib" > /etc/ld.so.conf.d/usr-lib.conf \

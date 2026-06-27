@@ -210,55 +210,7 @@ RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
     && DESTDIR=/out make -C build install
 
 
-# ── Stage 3: dantto4k のビルド（BS4K: MMT/TLV → MPEG-2 TS 変換）────────────
-#
-# nekohkr/dantto4k + tsduck (サブモジュール) をビルドする。
-# BS4K 放送は MMT/TLV 形式で伝送されるため、MPEG-2 TS に変換する必要がある。
-# 変換はチューナーコマンドの出力を dantto4k にパイプして行う (mmtsDecoder 設定)。
-#
-# 注意:
-# - tsduck の install-prerequisites.sh は lsb_release/sudo に依存しており、
-#   slim イメージでは何もインストールせず素通りする。スクリプトを使わず直接 apt install する。
-# - NOEDITLINE=1 で editline 依存を除去（libedit-dev 不要）
-# - CXXFLAGS_EXTRA=-Wno-error で GCC12 の -Werror 誤検知を回避
-# - tsduck は大規模なライブラリのため、ビルドに時間がかかる（20〜30 分）。
-#
-FROM ${ARCH}debian:bookworm-slim AS dantto4k-build
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates git \
-        make g++ \
-        python3 \
-        libssl-dev zlib1g-dev libcurl4-openssl-dev \
-        libpcsclite-dev \
-        pkgconf \
-        locales \
-    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
-    && locale-gen \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-
-RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git /src \
-    && cd /src && git submodule update --init --recursive --depth 1
-
-# tsduck をビルド・インストール（不要機能を無効化してビルド時間・依存を削減）
-RUN cd /src/thirdparty/tsduck \
-    && make -j"$(nproc)" \
-        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
-        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
-        CXXFLAGS_EXTRA=-Wno-error \
-    && make install \
-        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
-        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
-        CXXFLAGS_EXTRA=-Wno-error \
-    && ldconfig
-
-# dantto4k のビルド・インストール（/usr/local/bin/dantto4k）
-RUN cd /src && make -j"$(nproc)" && make install
-
-
-# ── Stage 4: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────
+# ── Stage 3: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────
 #
 # b-meu/Mirakurun: upstream chinachu/Mirakurun に BS4K 差分を適用した fork。
 # 主な追加機能:
@@ -280,7 +232,7 @@ RUN git clone --depth 1 https://github.com/b-meu/Mirakurun.git .
 RUN npm ci --include=dev && npm run build && npm ci --omit=dev
 
 
-# ── Stage 5: ランタイム ───────────────────────────────────────────────────────
+# ── Stage 4: ランタイム ───────────────────────────────────────────────────────
 FROM ${ARCH}node:24.16.0-bookworm-slim
 
 WORKDIR /app
@@ -288,33 +240,49 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        make \
-        gcc \
-        g++ \
-        pkg-config \
         pcscd \
         libpcsclite-dev \
         libccid \
         pcsc-tools \
         libudev1 \
         libssl3 \
-    && apt-get clean \
+        libcurl4 \
+        zlib1g \
+        git make g++ python3 pkg-config \
+        locales \
+    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen \
     && rm -rf /var/lib/apt/lists/*
 
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+
 # v4l-utils 1.32.0 (JP パッチ適用済み): libdvbv5 と dvb-tools
-# apt の libdvbv5-dev / dvb-tools は使用しない
 COPY --from=v4l-build /out/usr /usr
 
 # libaribb25: arib-b1-stream-test / arib-b25-stream-test
 COPY --from=aribb25-build /out/usr /usr
 
-# dantto4k + tsduck ランタイム（/usr/local/bin/dantto4k, /usr/local/lib/libtsduck*.so）
-COPY --from=dantto4k-build /usr/local /usr/local
-
-# /usr/lib と /usr/local/lib が ldconfig の検索パスに含まれない場合に備えて明示的に追加
-RUN echo "/usr/lib" > /etc/ld.so.conf.d/usr-lib.conf \
-    && echo "/usr/local/lib" >> /etc/ld.so.conf.d/usr-lib.conf \
-    && ldconfig
+# dantto4k + tsduck をランタイムステージで直接ビルド（ライブラリパス問題を回避）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libssl-dev zlib1g-dev libcurl4-openssl-dev \
+    && git clone --depth 1 https://github.com/nekohkr/dantto4k.git /tmp/dantto4k \
+    && cd /tmp/dantto4k && git submodule update --init --recursive --depth 1 \
+    && cd thirdparty/tsduck \
+    && make -j"$(nproc)" \
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && make install \
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && ldconfig \
+    && cd /tmp/dantto4k && make -j"$(nproc)" && make install \
+    && rm -rf /tmp/dantto4k \
+    && apt-get remove -y libssl-dev zlib1g-dev libcurl4-openssl-dev \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app /app
 CMD ["./docker/container-init.sh"]

@@ -250,6 +250,9 @@ FROM tsduck-build AS dantto4k-build
 
 RUN cd /src && make -j"$(nproc)" && make install
 
+# libtsduck の実際のインストール先を確認（診断用）
+RUN echo "=== libtsduck files ===" && find / -name "libtsduck*" 2>/dev/null && echo "=== ldd dantto4k ===" && ldd /usr/local/bin/dantto4k
+
 
 # ── Stage 4: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────
 #

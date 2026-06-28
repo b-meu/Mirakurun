@@ -234,20 +234,18 @@ RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git /src \
     && cd /src && git submodule update --init --recursive --depth 1
 
 RUN cd /src/thirdparty/tsduck \
+    && sed -i 's/ tsplugins tstools//' src/Makefile \
     && make -j"$(nproc)" \
         NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
-        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODTAPI=1 NOEDITLINE=1 \
         CXXFLAGS_EXTRA=-Wno-error \
     && make install \
         NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
-        NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODTAPI=1 NOEDITLINE=1 \
         CXXFLAGS_EXTRA=-Wno-error \
-    && ldconfig \
-    && echo "=== installed .so files ===" \
-    && find /usr/local -name "*.so*" \
-    && echo "=== /usr/local/lib contents ===" \
-    && ls -la /usr/local/lib/ \
-    && echo "=== END DIAGNOSTIC ==="
+    && echo "=== tsduck installed files ===" \
+    && find /usr/local -name "*.so*" 2>/dev/null \
+    && ldconfig
 
 
 # ── Stage 4: dantto4k のビルド ───────────────────────────────────────────────

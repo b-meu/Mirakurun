@@ -253,8 +253,11 @@ FROM tsduck-build AS dantto4k-build
 
 RUN cd /src && make -j"$(nproc)" && make install
 
-# libtsduck の実際のインストール先を確認（診断用）
-RUN echo "=== libtsduck files ===" && find / -name "libtsduck*" 2>/dev/null && echo "=== ldd dantto4k ===" && ldd /usr/local/bin/dantto4k
+# tsduck ライブラリを /tsduck-libs にまとめてコピーしやすくする
+RUN mkdir -p /tsduck-libs \
+    && find /usr/lib -name "lib*tscore*" -o -name "lib*tsduck*" 2>/dev/null \
+       | xargs -I{} cp -P {} /tsduck-libs/ \
+    && echo "=== tsduck-libs ===" && ls -la /tsduck-libs/
 
 
 # ── Stage 4: Mirakurun (BS4K対応fork) のビルド ───────────────────────────────
@@ -304,14 +307,12 @@ COPY --from=v4l-build /out/usr /usr
 # libaribb25: arib-b1-stream-test / arib-b25-stream-test
 COPY --from=aribb25-build /out/usr /usr
 
-# dantto4k バイナリ + tsduck ライブラリ（同一ビルド環境からコピーしてABI整合性を保証）
+# dantto4k バイナリ
 COPY --from=dantto4k-build /usr/local/bin/dantto4k /usr/local/bin/dantto4k
-COPY --from=dantto4k-build /usr/local/lib /usr/local/lib
+# tsduck ライブラリ（/usr/lib にインストールされる）
+COPY --from=dantto4k-build /tsduck-libs /usr/lib/
 
-# libtsduck の実際のインストール先を動的に検出して ldconfig に登録
-RUN find /usr/local/lib -name "libtsduck*" -exec dirname {} \; | sort -u \
-      | xargs -I{} sh -c 'echo "{}" >> /etc/ld.so.conf.d/tsduck.conf' \
-    && ldconfig
+RUN ldconfig
 
 COPY --from=build /app /app
 CMD ["./docker/container-init.sh"]

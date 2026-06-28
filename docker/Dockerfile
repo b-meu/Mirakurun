@@ -302,7 +302,10 @@ COPY --from=aribb25-build /out/usr /usr
 COPY --from=dantto4k-build /usr/local/bin/dantto4k /usr/local/bin/dantto4k
 COPY --from=dantto4k-build /usr/local/lib /usr/local/lib
 
-RUN ldconfig
+# libtsduck の実際のインストール先を動的に検出して ldconfig に登録
+RUN find /usr/local/lib -name "libtsduck*" -exec dirname {} \; | sort -u \
+      | xargs -I{} sh -c 'echo "{}" >> /etc/ld.so.conf.d/tsduck.conf' \
+    && ldconfig
 
 COPY --from=build /app /app
 CMD ["./docker/container-init.sh"]

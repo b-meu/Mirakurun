@@ -242,7 +242,12 @@ RUN cd /src/thirdparty/tsduck \
         NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
         NOSRT=1 NORIST=1 NOVATEK=1 NODEKTEC=1 NOEDITLINE=1 \
         CXXFLAGS_EXTRA=-Wno-error \
-    && ldconfig
+    && ldconfig \
+    && echo "=== installed .so files ===" \
+    && find /usr/local -name "*.so*" \
+    && echo "=== /usr/local/lib contents ===" \
+    && ls -la /usr/local/lib/ \
+    && echo "=== END DIAGNOSTIC ==="
 
 
 # ── Stage 4: dantto4k のビルド ───────────────────────────────────────────────

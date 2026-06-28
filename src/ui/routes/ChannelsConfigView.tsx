@@ -739,12 +739,17 @@ export const ChannelsConfigView: React.FC = () => {
                                             setScanMinCh("2");
                                             setScanMaxCh("24");
                                             break;
+                                        case "BS4K":
+                                            setScanMinCh("7");
+                                            setScanMaxCh("17");
+                                            break;
                                     }
                                 }}
                                 options={[
                                     { value: "GR", label: "GR" },
                                     { value: "BS", label: "BS" },
-                                    { value: "CS", label: "CS" }
+                                    { value: "CS", label: "CS" },
+                                    { value: "BS4K", label: "BS4K" }
                                 ]}
                             />
                         </FormGroup>
@@ -780,7 +785,7 @@ export const ChannelsConfigView: React.FC = () => {
                             />
                         </FormGroup>
 
-                        {scanType === "BS" && (
+                        {(scanType === "BS" || scanType === "BS4K") && (
                             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                                 <Switch
                                     label="Use Subchannel Style (BS01_0)"

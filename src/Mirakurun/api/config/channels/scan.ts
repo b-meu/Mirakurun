@@ -193,8 +193,8 @@ export function generateScanConfig(option: ChannelScanOption): ScanConfig | unde
         ...option
     };
 
-    // Handle BS (Broadcast Satellite) channels
-    if (option.type === "BS") {
+    // Handle BS (Broadcast Satellite) and BS4K channels
+    if (option.type === "BS" || option.type === "BS4K") {
         // Handle subchannel style BS scanning (e.g. BS01_0)
         if (satelliteOptions.useSubCh) {
             const bsSubchOptions = {

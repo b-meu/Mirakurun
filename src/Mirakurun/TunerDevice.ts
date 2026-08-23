@@ -309,20 +309,23 @@ export default class TunerDevice extends EventEmitter {
             if (ch.type === "BS4K") {
                 const parsed = common.parseCommandForSpawn(this._config.mmtsDecoder);
                 this._mmtsDecoderProcess = child_process.spawn(parsed.command, parsed.args);
+                const mmtsDecoderProcess = this._mmtsDecoderProcess;
 
                 this._mmtsDecoderProcess.once("error", (err) => {
-                    log.error("TunerDevice#%d mmtsDecoder process error `%s` (pid=%d)", this._index, err.name, this._mmtsDecoderProcess.pid);
+                    log.error("TunerDevice#%d mmtsDecoder process error `%s` (pid=%d)", this._index, err.name, mmtsDecoderProcess.pid);
                     this._kill(false);
                 });
 
                 this._mmtsDecoderProcess.once("exit", () => {
-                    this._mmtsDecoderProcess.stdin.end();
+                    if (mmtsDecoderProcess.stdin && mmtsDecoderProcess.stdin.destroyed === false) {
+                        mmtsDecoderProcess.stdin.end();
+                    }
                 });
 
                 this._mmtsDecoderProcess.once("close", (code, signal) => {
                     log.debug(
                         "TunerDevice#%d mmtsDecoder process has closed with code=%d by signal `%s` (pid=%d)",
-                        this._index, code, signal, this._mmtsDecoderProcess.pid
+                        this._index, code, signal, mmtsDecoderProcess.pid
                     );
                     if (this._exited === false) {
                         this._kill(false);
@@ -413,11 +416,14 @@ export default class TunerDevice extends EventEmitter {
             this.once("release", resolve);
 
             if (this._mmtsDecoderProcess) {
+                const mmtsDecoderProcess = this._mmtsDecoderProcess;
+                this._mmtsDecoderProcess = null;
                 this._process.stdout.unpipe();
                 this._process.stdout.destroy();
-                this._mmtsDecoderProcess.stdin.end();
-                this._mmtsDecoderProcess.kill("SIGTERM");
-                this._mmtsDecoderProcess = null;
+                if (mmtsDecoderProcess.stdin && mmtsDecoderProcess.stdin.destroyed === false) {
+                    mmtsDecoderProcess.stdin.end();
+                }
+                mmtsDecoderProcess.kill("SIGTERM");
             }
 
             if (/^dvbv5-zap /.test(this._command) === true) {
@@ -437,11 +443,14 @@ export default class TunerDevice extends EventEmitter {
 
     private _release(): void {
         if (this._mmtsDecoderProcess) {
+            const mmtsDecoderProcess = this._mmtsDecoderProcess;
+            this._mmtsDecoderProcess = null;
             this._process.stdout.unpipe();
             this._process.stdout.destroy();
-            this._mmtsDecoderProcess.stdin.end();
-            this._mmtsDecoderProcess.kill("SIGTERM");
-            this._mmtsDecoderProcess = null;
+            if (mmtsDecoderProcess.stdin && mmtsDecoderProcess.stdin.destroyed === false) {
+                mmtsDecoderProcess.stdin.end();
+            }
+            mmtsDecoderProcess.kill("SIGTERM");
         }
         if (this._process) {
             this._process.stderr.removeAllListeners();

@@ -158,7 +158,7 @@ export const ChannelsConfigView: React.FC = () => {
                 params.append("skipCh", expandedSkipCh);
             }
 
-            if (scanType === "BS" && scanUseSubCh) {
+            if ((scanType === "BS" || scanType === "BS4K") && scanUseSubCh) {
                 params.append("minSubCh", scanMinSubCh);
                 params.append("maxSubCh", scanMaxSubCh);
                 params.append("useSubCh", "true");
@@ -564,7 +564,8 @@ export const ChannelsConfigView: React.FC = () => {
                                             { value: "GR", label: "GR" },
                                             { value: "BS", label: "BS" },
                                             { value: "CS", label: "CS" },
-                                            { value: "SKY", label: "SKY" }
+                                            { value: "SKY", label: "SKY" },
+                                            { value: "BS4K", label: "BS4K" }
                                         ]}
                                     />
                                 </td>
@@ -738,12 +739,17 @@ export const ChannelsConfigView: React.FC = () => {
                                             setScanMinCh("2");
                                             setScanMaxCh("24");
                                             break;
+                                        case "BS4K":
+                                            setScanMinCh("7");
+                                            setScanMaxCh("17");
+                                            break;
                                     }
                                 }}
                                 options={[
                                     { value: "GR", label: "GR" },
                                     { value: "BS", label: "BS" },
-                                    { value: "CS", label: "CS" }
+                                    { value: "CS", label: "CS" },
+                                    { value: "BS4K", label: "BS4K" }
                                 ]}
                             />
                         </FormGroup>
@@ -779,7 +785,7 @@ export const ChannelsConfigView: React.FC = () => {
                             />
                         </FormGroup>
 
-                        {scanType === "BS" && (
+                        {(scanType === "BS" || scanType === "BS4K") && (
                             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                                 <Switch
                                     label="Use Subchannel Style (BS01_0)"

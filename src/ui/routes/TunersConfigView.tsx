@@ -39,7 +39,7 @@ import { ConfigTuners, ConfigTunersItem, ChannelType } from "../../../api.d";
 import "./TunersConfigView.sass";
 
 const configAPI = "/api/config/tuners";
-const typesIndex = ["GR", "BS", "CS", "SKY"];
+const typesIndex = ["GR", "BS", "CS", "SKY", "BS4K"];
 
 function sortTypes(types: ChannelType[]): ChannelType[] {
     return types.sort((a, b) => typesIndex.indexOf(a) - typesIndex.indexOf(b));
@@ -252,7 +252,7 @@ export const TunersConfigView: React.FC = () => {
                                 </td>
                                 <td>
                                     <div className="types-checkboxes">
-                                        {(["GR", "BS", "CS", "SKY"] as ChannelType[]).map((type) => {
+                                        {(["GR", "BS", "CS", "SKY", "BS4K"] as ChannelType[]).map((type) => {
                                             const checked = tuner.types?.includes(type) ?? false;
                                             return (
                                                 <Checkbox
@@ -356,7 +356,7 @@ export const TunersConfigView: React.FC = () => {
                                                 </div>
                                             </>
                                         )}
-                                        {(!tuner.remoteMirakurunHost || !tuner.remoteMirakurunDecoder) && (
+                                        {(!tuner.remoteMirakurunHost || !tuner.remoteMirakurunDecoder) && !tuner.types?.includes("BS4K") && (
                                             <FormGroup label="Decoder">
                                                 <InputGroup
                                                     value={tuner.decoder || ""}
@@ -366,6 +366,22 @@ export const TunersConfigView: React.FC = () => {
                                                             deleteTunerProperty(i, "decoder");
                                                         } else {
                                                             updateTuner(i, { decoder: val });
+                                                        }
+                                                    }}
+                                                />
+                                            </FormGroup>
+                                        )}
+                                        {tuner.types?.includes("BS4K") && (
+                                            <FormGroup label="MMTS Decoder">
+                                                <InputGroup
+                                                    placeholder="dantto4k - -"
+                                                    value={tuner.mmtsDecoder || ""}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        if (val === "") {
+                                                            deleteTunerProperty(i, "mmtsDecoder");
+                                                        } else {
+                                                            updateTuner(i, { mmtsDecoder: val });
                                                         }
                                                     }}
                                                 />

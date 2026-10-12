@@ -1,34 +1,333 @@
 ARG ARCH=
+
+# ── Stage 1: パッチ済み v4l-utils 1.32.0 のビルド ─────────────────────────────
+#
+# KouCo/v4l-utils-jp の変更内容を最新の v4l-utils 1.32.0 に適用する。
+# （KouCo フォークは 1.22.1 ベースで古いため、パッチのみ移植する）
+#
+# 変更ファイル:
+#   - dvb-v5-std.c : sys_dvbc_annex_b_props に DTV_SYMBOL_RATE を追加
+#   - dvb-scan.c   : SYS_DVBC_ANNEX_B を NIT スキャン対象に追加
+#                    ISDB-S NIT で DTV_STREAM_ID を設定
+#   - dvb-fe.c     : SYS_DVBC_ANNEX_B のシンボルレート取得/設定を修正
+#                    DVB-C/DVB-S2 で JP 国コード時に arib-std-b24 を設定
+#
+FROM ${ARCH}debian:bookworm-slim AS v4l-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates git \
+        meson ninja-build \
+        gcc g++ \
+        pkg-config gettext \
+        libudev-dev \
+        python3 \
+        dpkg-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch v4l-utils-1.32.0 \
+        https://github.com/gjasny/v4l-utils.git /src
+
+WORKDIR /src
+
+# JP パッチを Python スクリプトとして埋め込み、適用する
+RUN cat > /tmp/patch.py << 'PYEOF'
+def patch(path, old, new):
+    with open(path) as f:
+        c = f.read()
+    if old not in c:
+        raise ValueError(f"Pattern not found in {path}:\n{repr(old[:80])}")
+    with open(path, 'w') as f:
+        f.write(c.replace(old, new, 1))
+    print(f"OK: {path}")
+
+# ── dvb-v5-std.c: sys_dvbc_annex_b_props に DTV_SYMBOL_RATE を追加 ──────────
+patch('lib/libdvbv5/dvb-v5-std.c',
+    'const unsigned int sys_dvbc_annex_b_props[] = {\n'
+    '\tDTV_FREQUENCY,\n'
+    '\tDTV_MODULATION,\n'
+    '\t0\n'
+    '};',
+    'const unsigned int sys_dvbc_annex_b_props[] = {\n'
+    '\tDTV_FREQUENCY,\n'
+    '\tDTV_MODULATION,\n'
+    '\tDTV_SYMBOL_RATE,\n'
+    '\t0\n'
+    '};'
+)
+
+# ── dvb-scan.c: add_update_nit_isdbs に DTV_STREAM_ID を追加 ─────────────────
+patch('lib/libdvbv5/dvb-scan.c',
+    '\tdvb_store_entry_prop(new, DTV_SYMBOL_RATE,\n'
+    '\t\t\t     d->symbol_rate);\n'
+    '}\n'
+    '\n'
+    '\n'
+    'static void __dvb_add_update_transponders',
+    '\tdvb_store_entry_prop(new, DTV_SYMBOL_RATE,\n'
+    '\t\t\t     d->symbol_rate);\n'
+    '\tdvb_store_entry_prop(new, DTV_STREAM_ID,\n'
+    '\t\t\t     ts_id);\n'
+    '}\n'
+    '\n'
+    '\n'
+    'static void __dvb_add_update_transponders'
+)
+
+# ── dvb-scan.c: __dvb_add_update_transponders に SYS_DVBC_ANNEX_B を追加 ─────
+patch('lib/libdvbv5/dvb-scan.c',
+    '\tcase SYS_DVBC_ANNEX_A:\n'
+    '\tcase SYS_DVBC_ANNEX_C:\n'
+    '\t\tdvb_table_nit_descriptor_handler(',
+    '\tcase SYS_DVBC_ANNEX_A:\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\tcase SYS_DVBC_ANNEX_C:\n'
+    '\t\tdvb_table_nit_descriptor_handler('
+)
+
+# ── dvb-fe.c: __dvb_fe_get_parms — ATSCMH と DVBC_ANNEX_B を分離 ─────────────
+patch('lib/libdvbv5/dvb-fe.c',
+    '\tcase SYS_ATSC:\n'
+    '\tcase SYS_ATSCMH:\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\t\tdvb_fe_store_parm(&parms->p, DTV_MODULATION, v3_parms.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBT:',
+    '\tcase SYS_ATSC:\n'
+    '\tcase SYS_ATSCMH:\n'
+    '\t\tdvb_fe_store_parm(&parms->p, DTV_MODULATION, v3_parms.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\t\tdvb_fe_store_parm(&parms->p, DTV_SYMBOL_RATE, v3_parms.u.qam.symbol_rate);\n'
+    '\t\tdvb_fe_store_parm(&parms->p, DTV_MODULATION, v3_parms.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBT:'
+)
+
+# ── dvb-fe.c: dvb_setup_delsys_default — DVB-C/S2 で JP 時に arib-std-b24 ───
+patch('lib/libdvbv5/dvb-fe.c',
+    '\tswitch (p->current_sys) {\n'
+    '\tcase SYS_ISDBT:\n'
+    '\t\t/* Set country code. */',
+    '\tswitch (p->current_sys) {\n'
+    '\tcase SYS_DVBC_ANNEX_A:\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\tcase SYS_DVBC_ANNEX_C:\n'
+    '\tcase SYS_DVBS2:\n'
+    '\t\tcc = COUNTRY_UNKNOWN;\n'
+    '\t\tdvb_fe_retrieve_parm(p, DTV_COUNTRY_CODE, &cc);\n'
+    '\t\tif (cc == COUNTRY_UNKNOWN && parms->country != COUNTRY_UNKNOWN) {\n'
+    '\t\t\tcc = parms->country;\n'
+    '\t\t\tdvb_fe_store_parm(p, DTV_COUNTRY_CODE, cc);\n'
+    '\t\t}\n'
+    '\t\tswitch (cc) {\n'
+    '\t\tcase JP:\n'
+    '\t\t\tp->default_charset = "arib-std-b24";\n'
+    '\t\t\tbreak;\n'
+    '\t\tdefault:\n'
+    '\t\t\tbreak;\n'
+    '\t\t}\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_ISDBT:\n'
+    '\t\t/* Set country code. */'
+)
+
+# ── dvb-fe.c: __dvb_fe_set_parms — ATSCMH と DVBC_ANNEX_B を分離 ─────────────
+patch('lib/libdvbv5/dvb-fe.c',
+    '\tcase SYS_ATSC:\n'
+    '\tcase SYS_ATSCMH:\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\t\tdvb_fe_retrieve_parm(&tmp_parms.p, DTV_MODULATION, &v3_parms.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBT:',
+    '\tcase SYS_ATSC:\n'
+    '\tcase SYS_ATSCMH:\n'
+    '\t\tdvb_fe_retrieve_parm(&tmp_parms.p, DTV_MODULATION, &v3_parms.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\t\tdvb_fe_retrieve_parm(&tmp_parms.p, DTV_SYMBOL_RATE, &v3_parms.u.qam.symbol_rate);\n'
+    '\t\tdvb_fe_retrieve_parm(&tmp_parms.p, DTV_MODULATION, &v3_parms.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBT:'
+)
+
+# ── dvb-fe.c: dvb_fe_get_event — ATSCMH と DVBC_ANNEX_B を分離 ──────────────
+patch('lib/libdvbv5/dvb-fe.c',
+    '\tcase SYS_ATSC:\n'
+    '\tcase SYS_ATSCMH:\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\t\tdvb_fe_retrieve_parm(&parms->p, DTV_MODULATION, &event.parameters.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBT:',
+    '\tcase SYS_ATSC:\n'
+    '\tcase SYS_ATSCMH:\n'
+    '\t\tdvb_fe_retrieve_parm(&parms->p, DTV_MODULATION, &event.parameters.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBC_ANNEX_B:\n'
+    '\t\tdvb_fe_retrieve_parm(&parms->p, DTV_SYMBOL_RATE, &event.parameters.u.qam.symbol_rate);\n'
+    '\t\tdvb_fe_retrieve_parm(&parms->p, DTV_MODULATION, &event.parameters.u.vsb.modulation);\n'
+    '\t\tbreak;\n'
+    '\tcase SYS_DVBT:'
+)
+
+print("All patches applied.")
+PYEOF
+RUN python3 /tmp/patch.py
+
+RUN meson setup build \
+        --prefix=/usr \
+        --buildtype=release \
+        -Dqv4l2=disabled \
+        -Dqvidcap=disabled \
+        -Dv4l-wrappers=false \
+        -Dv4l-plugins=false \
+        -Dbpf=disabled \
+        -Ddoxygen-doc=disabled \
+    && DESTDIR=/out ninja -C build install
+
+
+# ── Stage 2: libaribb25 のビルド（arib-b1/b25-stream-test を含む）────────────
+#
+# tsukumijima/libaribb25 は以下を提供する:
+#   - arib-b1-stream-test  : スカパー！プレミアムサービス(ARIB STD-B1)のデスクランブル
+#   - arib-b25-stream-test : 地上/BS/CS デジタル放送(ARIB STD-B25)のデスクランブル
+#   - libaribb1 / libaribb25 : 各共有ライブラリ
+#
+FROM ${ARCH}debian:bookworm-slim AS aribb25-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates git \
+        cmake make \
+        gcc g++ \
+        pkg-config \
+        libpcsclite-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 https://github.com/tsukumijima/libaribb25.git /src
+
+WORKDIR /src
+RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
+    && make -j"$(nproc)" -C build \
+    && DESTDIR=/out make -C build install
+
+
+# ── Stage 3: tsduck のビルド（dantto4k サブモジュール固定コミット）──────────────
+#
+# tsduck は debian12 の公式 .deb を提供していないためソースビルドする。
+# dantto4k とステージを分離することで、Mirakurun の変更時に再ビルドされない。
+# tsduck ビルドは --no-cache なしなら Docker キャッシュが効く。
+#
+FROM ${ARCH}debian:bookworm-slim AS tsduck-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates git \
+        make g++ python3 \
+        libssl-dev zlib1g-dev libcurl4-openssl-dev \
+        libpcsclite-dev pkgconf \
+        locales \
+    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+
+RUN git clone --depth 1 https://github.com/nekohkr/dantto4k.git /src \
+    && cd /src && git submodule update --init --recursive --depth 1
+
+RUN cd /src/thirdparty/tsduck \
+    && sed -i 's/ tsplugins tstools//' src/Makefile \
+    && make -j"$(nproc)" \
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODTAPI=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && make install \
+        NOTEST=1 NODOC=1 NODOXYGEN=1 NOJAVA=1 \
+        NOSRT=1 NORIST=1 NOVATEK=1 NODTAPI=1 NOEDITLINE=1 \
+        CXXFLAGS_EXTRA=-Wno-error \
+    && echo "=== tsduck installed files ===" \
+    && find /usr/local -name "*.so*" 2>/dev/null \
+    && ldconfig
+
+
+# ── Stage 4: dantto4k のビルド ───────────────────────────────────────────────
+FROM tsduck-build AS dantto4k-build
+
+RUN cd /src && make -j"$(nproc)" && make install
+
+# tsduck ライブラリを /tsduck-libs にまとめてコピーしやすくする
+RUN mkdir -p /tsduck-libs \
+    && find /usr/lib -name "lib*tscore*" -o -name "lib*tsduck*" 2>/dev/null \
+       | xargs -I{} cp -P {} /tsduck-libs/ \
+    && echo "=== tsduck-libs ===" && ls -la /tsduck-libs/
+
+
+# ── Stage 5: Mirakurun (BS4K対応ブランチ) のビルド ───────────────────────────
+#
+# b-meu/Mirakurun は master を upstream のミラーに保ち、BS4K パッチは bs4k
+# ブランチで維持している。ここでは bs4k ブランチをビルドする。
+# 主な追加機能:
+#   - チャンネルタイプ BS4K の追加
+#   - tuners.yml に mmtsDecoder オプションを追加
+#   - BS4K の EPG をサービス単位で取得
+#   - BS4K チャンネルでは MPEG-2 TS デコーダをスキップ（dantto4k が処理）
+#
 FROM ${ARCH}node:24.21.0-bookworm AS build
+
 WORKDIR /app
 ENV DOCKER=YES NODE_ENV=production
-ADD . .
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends build-essential && \
-    npm ci --include=dev && \
-    npm run build && \
-    npm ci --omit=dev
+    apt-get install -y --no-install-recommends build-essential ca-certificates git && \
+    rm -rf /var/lib/apt/lists/*
 
+# MIRAKURUN_REF はブランチ名・タグ・コミットハッシュのいずれでも指定できる。
+# コミットハッシュを渡すと Docker のレイヤキャッシュが確実に無効化されるため、
+# bs4k を更新した後は --build-arg MIRAKURUN_REF=<sha> を付けてビルドする。
+#   例: docker compose build --build-arg MIRAKURUN_REF=$(git rev-parse bs4k)
+ARG MIRAKURUN_REF=bs4k
+RUN set -eux; \
+    if git clone --depth 1 --branch "${MIRAKURUN_REF}" \
+            https://github.com/b-meu/Mirakurun.git . 2>/dev/null; then \
+        :; \
+    else \
+        git clone https://github.com/b-meu/Mirakurun.git .; \
+        git checkout --detach "${MIRAKURUN_REF}"; \
+    fi; \
+    git log -1 --format="built from %H %s"
+RUN npm ci --include=dev && npm run build && npm ci --omit=dev
+
+
+# ── Stage 6: ランタイム ───────────────────────────────────────────────────────
 FROM ${ARCH}node:24.21.0-bookworm-slim
+
 WORKDIR /app
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        make \
-        gcc \
-        g++ \
-        pkg-config \
         pcscd \
         libpcsclite-dev \
         libccid \
-        libdvbv5-dev \
         pcsc-tools \
-        dvb-tools \
-        && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+        libudev1 \
+        libssl3 \
+        libcurl4 \
+        zlib1g \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# v4l-utils 1.32.0 (JP パッチ適用済み): libdvbv5 と dvb-tools
+COPY --from=v4l-build /out/usr /usr
+
+# libaribb25: arib-b1-stream-test / arib-b25-stream-test
+COPY --from=aribb25-build /out/usr /usr
+
+# dantto4k バイナリ
+COPY --from=dantto4k-build /usr/local/bin/dantto4k /usr/local/bin/dantto4k
+# tsduck ライブラリ（/usr/lib にインストールされる）
+COPY --from=dantto4k-build /tsduck-libs /usr/lib/
+
+RUN ldconfig
+
 COPY --from=build /app /app
 CMD ["./docker/container-init.sh"]
 EXPOSE 40772 9229

@@ -313,6 +313,8 @@ export interface ConfigTunersItem {
     remoteMirakurunDecoder?: boolean;
     /** CAS processor command if needed. */
     decoder?: string;
+    /** MMT/TLV to MPEG-2 TS decoder command, used for BS4K channels. */
+    mmtsDecoder?: string;
     /** `true` to **disable** this tuner. */
     isDisabled?: boolean;
 }

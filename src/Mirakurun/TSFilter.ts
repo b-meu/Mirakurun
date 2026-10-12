@@ -1003,8 +1003,15 @@ export default class TSFilter extends EventEmitter {
             this._epgReady = true;
             this._clearEpgState();
 
-            for (const service of _.service.findByNetworkId(this._targetNetworkId)) {
+            // BS4K carries a per-service EIT, so only the tuned service is ready.
+            // Every other network broadcasts the whole network's schedule.
+            const service = _.service.get(this._targetNetworkId, serviceId);
+            if (service && service.channel.type === "BS4K") {
                 service.epgReady = true;
+            } else {
+                for (const serviceItem of _.service.findByNetworkId(this._targetNetworkId)) {
+                    serviceItem.epgReady = true;
+                }
             }
 
             process.nextTick(() => this.emit("epgReady"));

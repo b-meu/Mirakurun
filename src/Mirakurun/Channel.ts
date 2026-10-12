@@ -19,6 +19,7 @@ import * as apid from "../../api";
 import _ from "./_";
 import status from "./status";
 import ChannelItem from "./ChannelItem";
+import ServiceItem from "./ServiceItem";
 import { JobItem } from "./Job";
 
 export class Channel {
@@ -181,15 +182,7 @@ export class Channel {
             this._startup = false;
         }
 
-        const networkIds = [...new Set(_.service.items.map(item => item.networkId))];
-
-        for (const networkId of networkIds) {
-            const services = _.service.findByNetworkId(networkId);
-            if (services.length === 0) {
-                continue;
-            }
-            const service = services[0];
-
+        const addEPGJob = (networkId: number, service: ServiceItem) => {
             _.job.add({
                 key: `EPG.Gather.NID.${networkId}`,
                 name: `EPG Gather Network#${networkId}`,
@@ -237,6 +230,71 @@ export class Channel {
                     return _.tuner.readyForJob(service.channel);
                 }
             });
+        };
+
+        // BS4K broadcasts a per-service EIT, so each service needs its own job;
+        // one network-wide job would stop after the first service was gathered.
+        const addBS4KEPGJob = (networkId: number, service: ServiceItem) => {
+            _.job.add({
+                key: `EPG.Gather.NID.${networkId}.SID.${service.id}`,
+                name: `EPG Gather Network#${networkId} Service#${service.id}`,
+                isRerunnable: true,
+                fn: async () => {
+                    log.info("Network#%d Service#%d EPG gathering has started", networkId, service.id);
+                    try {
+                        await _.tuner.getEPG(service.channel);
+                        log.info("Network#%d Service#%d EPG gathering has finished", networkId, service.id);
+                    } catch (e) {
+                        log.warn("Network#%d Service#%d EPG gathering has failed [%s]", networkId, service.id, e);
+                        throw new Error("EPG gathering failed");
+                    }
+                },
+                readyFn: async () => {
+                    await common.sleep(100);
+
+                    if (service.epgReady === true) {
+                        const now = Date.now();
+                        if (startup && now - service.epgUpdatedAt < 1000 * 60 * 10) { // 10 mins
+                            log.info("Network#%d Service#%d EPG gathering has skipped because EPG is already up to date (in 10 mins)", networkId, service.id);
+                            return false;
+                        }
+                        if (now - service.epgUpdatedAt > 1000 * 60 * 60 * 12) { // 12 hours
+                            log.info("Network#%d Service#%d EPG gathering is resuming forcibly because reached maximum pause time (12 hours)", networkId, service.id);
+                            service.epgReady = false;
+                        } else {
+                            const currentPrograms = _.program.findByNetworkIdAndServiceIdAndTime(networkId, service.id, now)
+                                .filter(program => !!program.name && program.name !== "放送休止");
+                            if (currentPrograms.length === 0) {
+                                const servicePrograms = _.program.findByNetworkIdServiceId(networkId, service.id);
+                                if (servicePrograms.length > 0) {
+                                    log.info("Network#%d Service#%d EPG gathering has skipped because broadcast is off", networkId, service.id);
+                                    return false;
+                                }
+                                service.epgReady = false;
+                            }
+                        }
+                    }
+
+                    return _.tuner.readyForJob(service.channel);
+                }
+            });
+        };
+
+        const networkIds = [...new Set(_.service.items.map(item => item.networkId))];
+
+        for (const networkId of networkIds) {
+            const services = _.service.findByNetworkId(networkId);
+            if (services.length === 0) {
+                continue;
+            }
+
+            if (services[0].channel.type === "BS4K") {
+                for (const service of services) {
+                    addBS4KEPGJob(networkId, service);
+                }
+            } else {
+                addEPGJob(networkId, services[0]);
+            }
         }
     }
 }
